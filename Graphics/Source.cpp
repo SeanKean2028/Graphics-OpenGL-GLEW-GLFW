@@ -39,11 +39,17 @@ int main() {
 
     // Create some primitive
     float vertices[] = {
-        0.0f, 0.5f, 1.0f, 0.0f, 0.0f, // Vertex 1 (X,Y,R,G,B) Red
-        0.5f, -0.5f, 0.0f, 1.0f, 0.0f,// Vertex 2 (X,Y,R,G,B) Green
-        -0.5f, -0.5f, 0.0f, 0.0f, 1.0f,// Vertex 3 (X,Y,R,G,B) Blue
+        -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, // Top-left vertex (position + color)
+         0.5f, 0.5f, 0.0f, 1.0f, 0.0f, // Top-right vertex (position + color)
+		 0.5f,-0.5f, 0.0f, 0.0f, 1.0f, // Bottom-right vertex (position + color)
+		 -0.5f,-0.5f, 1.0f, 1.0f, 0.0f  // Bottom-left vertex (position + color)
     };
-
+         
+    //Unsigned int elements referring to vertices bound to GL_ARRAY_BUFFER if we want to draw them in order
+    GLuint elements[] = {
+        0, 1, 2,
+        2, 3, 0
+	};  
     //We need a VAO
     GLuint vao;
     glGenVertexArrays(1, &vao);
@@ -57,6 +63,12 @@ int main() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     //Make it active GL_STATIC_DRAW = uploaded once drawn many times
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    GLuint ebo;
+	glGenBuffers(1, &ebo);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
+	glDrawElements(GL_TRIANGLES,6, GL_UNSIGNED_INT, 0);
 
     //Print id
     printf("%u\n", vbo);
@@ -175,7 +187,7 @@ int main() {
         
         glUseProgram(shaderProgram);
         glBindVertexArray(vao);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
