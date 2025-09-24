@@ -50,10 +50,45 @@ int main() {
         0, 1, 2,
         2, 3, 0
 	};  
+
+	// Black/White Checkboard Texture
+    float pixels[] = {
+        0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
+    };
+	//Upload texture to GPU, target = 2d texture, level = 0 no mipmaps, internal format = RGB, width = 2, height = 2, border = 0, format = RGB, type = float, pixels = actual data
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
     //We need a VAO
     GLuint vao;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
+
+    //Texture
+	//Texture coorinates clamped between 0.0 and 1.0 where (0, 0) is bottom left and (1, 1) is top right
+    //Retrieving texture at the pixel = sampling
+    GLuint tex;
+    glGenTextures(1, &tex);
+   
+    //Constraints for texture coordinates outside the range [0.0, 1.0]: gotta repeat, mirrored repeat, clamp to edge, clamp to border
+	//glTexParameteri sets texture parameters for the currently bound texture
+	//GL_TEXTURE_WRAP_S = x axis, GL_TEXTURE_WRAP_T = y axis
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
+    //fv expects a float, i expects an int
+	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+	//Gotta filter the texture to match pixels
+	//GL_NEAREST = returns the pixel that is closest
+	//GL_LINEAR = returns the weighted average of the 4 pixels closest to the texture coordinate
+	//GL_MIPMAP_NEAREST = picks the mipmap that most closely matches the size of the pixel being textured and uses GL_NEAREST to sample from that mipmap
+	//GL_MIPMAP_LINEAR = picks the two mipmaps that most closely match the size of the pixel being textured and uses GL_LINEAR to sample from them and then blends the two samples together
+	//Lienar interpolation is best for 8 bit graphics
+	// GL_TEXTURE_MIN_FILTER = used when the pixel being textured maps to an area greater than one texture element, i.
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glGenerateMipmap(GL_TEXTURE_2D);
 
     //Unsigned int to identify our primitive
     GLuint vbo;
