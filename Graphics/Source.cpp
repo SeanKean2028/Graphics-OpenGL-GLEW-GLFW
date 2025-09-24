@@ -2,10 +2,11 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
-
+#include <chrono>
 void Main() {
 
 }
+using namespace std;
 int main() {
     // Initialize GLFW
     if (!glfwInit()) {
@@ -60,22 +61,23 @@ int main() {
     //Print id
     printf("%u\n", vbo);
 
-    //Vertex shader source
+    //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
     const char* vertexSource = R"glsl(
         #version 330 core
 
         layout(location = 0) in vec2 position;
-        
         void main(){
             gl_Position = vec4(position,0.0, 1.0);
         }
     )glsl";
+    //Handles coloring of pixels
     const char* fragmentSource = R"glsl(
     #version 330 core
+    uniform vec3 triangleColor;
     out vec4 outColor;
-
+   
     void main() {
-        outColor = vec4(1.0, 0.5, 0.2, 1.0);
+        outColor = vec4(triangleColor, 1.0);
     }
 )glsl";
     //Create Id to store the shader
@@ -124,7 +126,6 @@ int main() {
     }
 
     glUseProgram(shaderProgram);
-
     //We need to order our attributes
     //Get attribute location signed int
     GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
@@ -151,10 +152,19 @@ int main() {
     // Optional: make background a non-black color so triangle is obvious
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
+
     // Main loop
+    GLint uniColor = glGetUniformLocation(shaderProgram, "triangleColor");
+    auto t_start = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT);
 
+
+        auto t_now = std::chrono::high_resolution_clock::now();
+        float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
+        glUniform3f(uniColor, (sin(time * 4.0f) + 1.0f)/2.0f, (cos(time * 4.0f) + 1.0f)/2.0f, 0.0f);
+
+        
         glUseProgram(shaderProgram);
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
