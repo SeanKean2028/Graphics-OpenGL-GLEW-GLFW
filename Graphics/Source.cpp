@@ -39,9 +39,9 @@ int main() {
 
     // Create some primitive
     float vertices[] = {
-        0.0f, 0.5f, // Vertex 1 (X,Y)
-        0.5f, -0.5f, // Vertex 2 (X,Y)
-        -0.5f, -0.5f // Vertex 3 (X,Y)
+        0.0f, 0.5f, 1.0f, 0.0f, 0.0f, // Vertex 1 (X,Y,R,G,B) Red
+        0.5f, -0.5f, 0.0f, 1.0f, 0.0f,// Vertex 2 (X,Y,R,G,B) Green
+        -0.5f, -0.5f, 0.0f, 0.0f, 1.0f,// Vertex 3 (X,Y,R,G,B) Blue
     };
 
     //We need a VAO
@@ -64,22 +64,24 @@ int main() {
     //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
     const char* vertexSource = R"glsl(
         #version 330 core
-
-        layout(location = 0) in vec2 position;
+        in vec2 position;
+        in vec3 color;
+        out vec3 Color;
         void main(){
+            Color = color;
             gl_Position = vec4(position,0.0, 1.0);
         }
     )glsl";
     //Handles coloring of pixels
     const char* fragmentSource = R"glsl(
-    #version 330 core
-    uniform vec3 triangleColor;
-    out vec4 outColor;
+        #version 330 core
+        in vec3 Color;
+        out vec4 outColor;
    
-    void main() {
-        outColor = vec4(triangleColor, 1.0);
-    }
-)glsl";
+        void main() {
+            outColor = vec4(Color, 1.0);
+        }
+    )glsl";
     //Create Id to store the shader
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
     //Upload actual data 
@@ -138,11 +140,10 @@ int main() {
     //Set how the input is to be achieved, 2 = number of values, GL_FLOAT is the type of each component clamped to -1.0, and 1.0 
     //Last two most important, sets how the attribuates laid out, first = stride: how many bytes are between each position attribute, last = offset: how many bytes from the start of the array
     //Also stores the vbo currently bound in the GL_ARRAY_BUFFER
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 5*sizeof(float), 0);
 
     //The method says what it does...
     glEnableVertexAttribArray(posAttrib);
-
     // Print some info
     std::cout << "OpenGL Vendor:   " << glGetString(GL_VENDOR) << "\n";
     std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << "\n";
@@ -152,9 +153,16 @@ int main() {
     // Optional: make background a non-black color so triangle is obvious
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 
+	//Get attribute location signed int
+    GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
+	
+    //Enables a generic vertex attribute array
+    glEnableVertexAttribArray(colAttrib);
 
+	//Defines an array of vertex attribute data 	
+    // GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)(2*sizeof(float)));
     // Main loop
-    GLint uniColor = glGetUniformLocation(shaderProgram, "triangleColor");
     auto t_start = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT);
@@ -162,7 +170,7 @@ int main() {
 
         auto t_now = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
-        glUniform3f(uniColor, (sin(time * 4.0f) + 1.0f)/2.0f, (cos(time * 4.0f) + 1.0f)/2.0f, 0.0f);
+        glUniform3f(colAttrib, 1.0f, 1.0f, 0.0f);
 
         
         glUseProgram(shaderProgram);
