@@ -102,7 +102,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>V:\Graphics\External Resources\GLEW\glew-2.1.0\include;V:\Graphics\External Resources\GLFW\glfw-3.4.bin.WIN64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>V:\Graphics\External Resources\GLEW\glew-2.1.0\include;V:\Graphics\External Resources\SOIL\;V:\Graphics\External Resources\GLFW\glfw-3.4.bin.WIN64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -119,7 +119,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>V:\Graphics\External Resources\GLEW\glew-2.1.0\include;V:\Graphics\External Resources\GLFW\glfw-3.4.bin.WIN64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>V:\Graphics\External Resources\GLEW\glew-2.1.0\include;V:\Graphics\External Resources\SOIL\;V:\Graphics\External Resources\GLFW\glfw-3.4.bin.WIN64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -129,7 +129,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="C:\Users\14025\Downloads\soil-master\soil-master\src\image_DXT.c" />
+    <ClCompile Include="C:\Users\14025\Downloads\soil-master\soil-master\src\image_helper.c" />
+    <ClCompile Include="C:\Users\14025\Downloads\soil-master\soil-master\src\SOIL.c" />
+    <ClCompile Include="C:\Users\14025\Downloads\soil-master\soil-master\src\stb_image_aug.c" />
     <ClCompile Include="Source.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\14025\Downloads\soil-master\soil-master\inc\SOIL\image_DXT.h" />
+    <ClInclude Include="C:\Users\14025\Downloads\soil-master\soil-master\inc\SOIL\image_helper.h" />
+    <ClInclude Include="C:\Users\14025\Downloads\soil-master\soil-master\inc\SOIL\SOIL.h" />
+    <ClInclude Include="C:\Users\14025\Downloads\soil-master\soil-master\inc\SOIL\stbi_DDS_aug.h" />
+    <ClInclude Include="C:\Users\14025\Downloads\soil-master\soil-master\inc\SOIL\stbi_DDS_aug_c.h" />
+    <ClInclude Include="C:\Users\14025\Downloads\soil-master\soil-master\inc\SOIL\stb_image_aug.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

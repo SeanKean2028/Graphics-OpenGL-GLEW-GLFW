@@ -1,11 +1,11 @@
-#define GLEW_STATIC
+﻿#define GLEW_STATIC
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <chrono>
-void Main() {
+#include <SOIL.h>
+#include <Windows.h>
 
-}
 using namespace std;
 int main() {
     // Initialize GLFW
@@ -39,10 +39,11 @@ int main() {
 
     // Create some primitive
     float vertices[] = {
-        -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, // Top-left vertex (position + color)
-         0.5f, 0.5f, 0.0f, 1.0f, 0.0f, // Top-right vertex (position + color)
-		 0.5f,-0.5f, 0.0f, 0.0f, 1.0f, // Bottom-right vertex (position + color)
-		 -0.5f,-0.5f, 1.0f, 1.0f, 0.0f  // Bottom-left vertex (position + color)
+        // Position Color Texcoords
+        -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // Top-left
+        0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // Top-right
+        0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, // Bottom-right
+        -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f // Bottom-left
     };
          
     //Unsigned int elements referring to vertices bound to GL_ARRAY_BUFFER if we want to draw them in order
@@ -56,8 +57,6 @@ int main() {
         0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
         1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
     };
-	//Upload texture to GPU, target = 2d texture, level = 0 no mipmaps, internal format = RGB, width = 2, height = 2, border = 0, format = RGB, type = float, pixels = actual data
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
     //We need a VAO
     GLuint vao;
     glGenVertexArrays(1, &vao);
@@ -68,6 +67,7 @@ int main() {
     //Retrieving texture at the pixel = sampling
     GLuint tex;
     glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
    
     //Constraints for texture coordinates outside the range [0.0, 1.0]: gotta repeat, mirrored repeat, clamp to edge, clamp to border
 	//glTexParameteri sets texture parameters for the currently bound texture
@@ -77,7 +77,6 @@ int main() {
 	float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
     //fv expects a float, i expects an int
 	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
-    glBindTexture(GL_TEXTURE_2D, tex);
 
 	//Gotta filter the texture to match pixels
 	//GL_NEAREST = returns the pixel that is closest
@@ -89,6 +88,25 @@ int main() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glGenerateMipmap(GL_TEXTURE_2D);
+
+	//Upload texture to GPU, target = 2d texture, level = 0 no mipmaps, internal format = RGB, width = 2, height = 2, border = 0, format = RGB, type = float, pixels = actual data
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
+
+	//SOIL Texture Loading
+    int width, height;
+	
+    //SOIL_LOAD_RGB forces the image to load as Red Green Blue, 0 = generate a new texture ID: Creates texture form image
+    unsigned char* image = SOIL_load_image("V:/Graphics/x64/Debug/textures/cat.png", &width, &height,0, SOIL_LOAD_RGB);
+
+
+    if (image == 0) {
+        printf("SOIL loading error: '%s'\n", SOIL_last_result());
+    }
+    //Defines the texture image
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+	
+    //Cleans up the image data
+    SOIL_free_image_data(image);
 
     //Unsigned int to identify our primitive
     GLuint vbo;
@@ -113,8 +131,11 @@ int main() {
         #version 330 core
         in vec2 position;
         in vec3 color;
+        in vec2 texcoord;
         out vec3 Color;
+        out vec2 Texcoord;    
         void main(){
+            Texcoord = texcoord;
             Color = color;
             gl_Position = vec4(position,0.0, 1.0);
         }
@@ -123,10 +144,12 @@ int main() {
     const char* fragmentSource = R"glsl(
         #version 330 core
         in vec3 Color;
+        in vec2 Texcoord;
         out vec4 outColor;
-   
+        
+        uniform sampler2D tex;
         void main() {
-            outColor = vec4(Color, 1.0);
+            outColor = texture(tex, Texcoord ) * vec4(Color, 1.0);
         }
     )glsl";
     //Create Id to store the shader
@@ -187,7 +210,7 @@ int main() {
     //Set how the input is to be achieved, 2 = number of values, GL_FLOAT is the type of each component clamped to -1.0, and 1.0 
     //Last two most important, sets how the attribuates laid out, first = stride: how many bytes are between each position attribute, last = offset: how many bytes from the start of the array
     //Also stores the vbo currently bound in the GL_ARRAY_BUFFER
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 5*sizeof(float), 0);
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 7*sizeof(float), 0);
 
     //The method says what it does...
     glEnableVertexAttribArray(posAttrib);
@@ -198,17 +221,22 @@ int main() {
     std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
 
     // Optional: make background a non-black color so triangle is obvious
-    glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 	//Get attribute location signed int
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
 	
-    //Enables a generic vertex attribute array
-    glEnableVertexAttribArray(colAttrib);
 
 	//Defines an array of vertex attribute data 	
     // GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 5*sizeof(float), (void*)(2*sizeof(float)));
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 7*sizeof(float), (void*)(2*sizeof(float)));
+    //Enables a generic vertex attribute array
+    glEnableVertexAttribArray(colAttrib);
+
+    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+	glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(5 * sizeof(float)));
+	glEnableVertexAttribArray(texAttrib);
+    
     // Main loop
     auto t_start = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(window)) {
@@ -239,3 +267,36 @@ int main() {
     glfwTerminate();
     return 0;
 }
+/*
+* 1. Initialize GLFW, GLEW, MAKE WINDOWS
+        glfwInit()
+        glfwWindowHint(...)
+        glfwCreateWindow(...)
+        glfwMakeContextCurrent(window)
+        glewInit()
+  2. Setup arrays (Vertex Buffer Object, Vertex Array Object, Element Buffer Object)
+        glGenVertexArrays, glBindVertexArray
+        glGenBuffers, glBindBuffer, glBufferData
+        Compile + link shaders → glUseProgram
+        Setup vertex attributes → glVertexAttribPointer, glEnableVertexAttribArray
+  3. Setup texture information
+        glGenTextures, glBindTexture
+        glTexParameteri
+        SOIL_load_image
+        glTexImage2D
+        glGenerateMipmap
+        SOIL_free_image_data
+        glUniform1i (set sampler to texture unit 0)
+  4. Main loop: 
+        a. glClear
+        b. glActiveTexture(GL_TEXTURE0)
+        c. glBindTexture(GL_TEXTURE_2D, tex)
+        d. glUseProgram 
+        e. glBindVertexArray  
+        f. glDrawElements
+        g. glfwSwapBuffers, glfwPollEvents
+  5. Disposing
+        Cleanup: delete VAO/VBO/EBO/texture/shaders
+        glfwDestroyWindow
+        glfwTerminate()
+*/
