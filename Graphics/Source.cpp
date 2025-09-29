@@ -51,62 +51,10 @@ int main() {
         0, 1, 2,
         2, 3, 0
 	};  
-
-	// Black/White Checkboard Texture
-    float pixels[] = {
-        0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, 1.0f,   0.0f, 0.0f, 0.0f
-    };
     //We need a VAO
     GLuint vao;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
-
-    //Texture
-	//Texture coorinates clamped between 0.0 and 1.0 where (0, 0) is bottom left and (1, 1) is top right
-    //Retrieving texture at the pixel = sampling
-    GLuint tex;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-   
-    //Constraints for texture coordinates outside the range [0.0, 1.0]: gotta repeat, mirrored repeat, clamp to edge, clamp to border
-	//glTexParameteri sets texture parameters for the currently bound texture
-	//GL_TEXTURE_WRAP_S = x axis, GL_TEXTURE_WRAP_T = y axis
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
-    //fv expects a float, i expects an int
-	glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, color);
-
-	//Gotta filter the texture to match pixels
-	//GL_NEAREST = returns the pixel that is closest
-	//GL_LINEAR = returns the weighted average of the 4 pixels closest to the texture coordinate
-	//GL_MIPMAP_NEAREST = picks the mipmap that most closely matches the size of the pixel being textured and uses GL_NEAREST to sample from that mipmap
-	//GL_MIPMAP_LINEAR = picks the two mipmaps that most closely match the size of the pixel being textured and uses GL_LINEAR to sample from them and then blends the two samples together
-	//Lienar interpolation is best for 8 bit graphics
-	// GL_TEXTURE_MIN_FILTER = used when the pixel being textured maps to an area greater than one texture element, i.
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glGenerateMipmap(GL_TEXTURE_2D);
-
-	//Upload texture to GPU, target = 2d texture, level = 0 no mipmaps, internal format = RGB, width = 2, height = 2, border = 0, format = RGB, type = float, pixels = actual data
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 2, 2, 0, GL_RGB, GL_FLOAT, pixels);
-
-	//SOIL Texture Loading
-    int width, height;
-	
-    //SOIL_LOAD_RGB forces the image to load as Red Green Blue, 0 = generate a new texture ID: Creates texture form image
-    unsigned char* image = SOIL_load_image("V:/Graphics/x64/Debug/textures/cat.png", &width, &height,0, SOIL_LOAD_RGB);
-
-
-    if (image == 0) {
-        printf("SOIL loading error: '%s'\n", SOIL_last_result());
-    }
-    //Defines the texture image
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
-	
-    //Cleans up the image data
-    SOIL_free_image_data(image);
 
     //Unsigned int to identify our primitive
     GLuint vbo;
@@ -118,20 +66,17 @@ int main() {
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
     GLuint ebo;
-	glGenBuffers(1, &ebo);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
-	glDrawElements(GL_TRIANGLES,6, GL_UNSIGNED_INT, 0);
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
 
-    //Print id
-    printf("%u\n", vbo);
 
     //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
     const char* vertexSource = R"glsl(
         #version 330 core
-        in vec2 position;
-        in vec3 color;
-        in vec2 texcoord;
+        layout(location = 0) in vec2 position;
+        layout(location = 1) in vec3 color;
+        layout(location = 2) in vec2 texcoord;
         out vec3 Color;
         out vec2 Texcoord;    
         void main(){
@@ -140,16 +85,20 @@ int main() {
             gl_Position = vec4(position,0.0, 1.0);
         }
     )glsl";
-    //Handles coloring of pixels
+    //Handles coloring of pixels using glsl
+	//sampler2D = texture, samples at certain points based on mix func. which linearly interpolates between two values based on a third value
     const char* fragmentSource = R"glsl(
         #version 330 core
         in vec3 Color;
         in vec2 Texcoord;
         out vec4 outColor;
+        uniform sampler2D texKitten;
+        uniform sampler2D texPuppy;
         
-        uniform sampler2D tex;
         void main() {
-            outColor = texture(tex, Texcoord ) * vec4(Color, 1.0);
+            vec4 colKitten = texture(texKitten, Texcoord);
+            vec4 colPuppy = texture(texPuppy, Texcoord);
+            outColor = mix(colKitten, colPuppy, 0.5);
         }
     )glsl";
     //Create Id to store the shader
@@ -182,6 +131,7 @@ int main() {
 
     //Creates a shaderProgram attaches both 
     GLuint shaderProgram = glCreateProgram();
+
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     //sets to which location writing to  Use glDrawBuffers when rendering multiple buffers
@@ -189,7 +139,6 @@ int main() {
 
     //Connections made project is linked!
     glLinkProgram(shaderProgram);
-
     // Check link status
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &status);
     if (!status) {
@@ -208,9 +157,9 @@ int main() {
     }
 
     //Set how the input is to be achieved, 2 = number of values, GL_FLOAT is the type of each component clamped to -1.0, and 1.0 
-    //Last two most important, sets how the attribuates laid out, first = stride: how many bytes are between each position attribute, last = offset: how many bytes from the start of the array
-    //Also stores the vbo currently bound in the GL_ARRAY_BUFFER
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 7*sizeof(float), 0);
+   //Last two most important, sets how the attribuates laid out, first = stride: how many bytes are between each position attribute, last = offset: how many bytes from the start of the array
+   //Also stores the vbo currently bound in the GL_ARRAY_BUFFER
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(float), 0);
 
     //The method says what it does...
     glEnableVertexAttribArray(posAttrib);
@@ -223,29 +172,74 @@ int main() {
     // Optional: make background a non-black color so triangle is obvious
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-	//Get attribute location signed int
+    //Get attribute location signed int
     GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
-	
 
-	//Defines an array of vertex attribute data 	
+
+    //Defines an array of vertex attribute data 	
     // GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 7*sizeof(float), (void*)(2*sizeof(float)));
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(2 * sizeof(float)));
     //Enables a generic vertex attribute array
     glEnableVertexAttribArray(colAttrib);
 
     GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
-	glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(5 * sizeof(float)));
-	glEnableVertexAttribArray(texAttrib);
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(5 * sizeof(float)));
+    glEnableVertexAttribArray(texAttrib);
+
+    std::cout << "posAttrib: " << posAttrib << "\n";
+    std::cout << "colAttrib: " << colAttrib << "\n";
+    std::cout << "texAttrib: " << texAttrib << "\n";
+    //Texture
+	//Texture coorinates clamped between 0.0 and 1.0 where (0, 0) is bottom left and (1, 1) is top right
+    //Retrieving texture at the pixel = sampling
+    GLuint textures[2];
+    glGenTextures(2, textures);
+    int width, height;
+	unsigned char* image;
+	//Gotta activate before binding
+    glActiveTexture(GL_TEXTURE0);
+
+	//Atmost 48 textures can be bound at once
+    glBindTexture(GL_TEXTURE_2D, textures[0]);
+	//Cat loading in via SOIL
+    image = SOIL_load_image("textures/cat.png", &width, &height, 0, SOIL_LOAD_RGB);
+    if (!image) {
+        std::cerr << "Failed to load cat.png: " << SOIL_last_result() << "\n";
+    }
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
+        GL_UNSIGNED_BYTE, image);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    SOIL_free_image_data(image);
+    glUniform1i(glGetUniformLocation(shaderProgram, "texKitten"), 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    //Dog loaded in via SOIL
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, textures[1]);
+    image = SOIL_load_image("textures/puppy.png", &width, &height, 0, SOIL_LOAD_RGB);
+    if (!image) {
+        std::cerr << "Failed to load cat.png: " << SOIL_last_result() << "\n";
+    }
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    SOIL_free_image_data(image);
+    glUniform1i(glGetUniformLocation(shaderProgram, "texPuppy"), 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+
+   
     
     // Main loop
     auto t_start = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT);
-
-
-        auto t_now = std::chrono::high_resolution_clock::now();
-        float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
-        glUniform3f(colAttrib, 1.0f, 1.0f, 0.0f);
 
         
         glUseProgram(shaderProgram);
