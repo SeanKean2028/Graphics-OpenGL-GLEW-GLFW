@@ -39,6 +39,7 @@ int main() {
         std::cerr << "Failed to initialize GLEW\n";
         return -1;
     }
+    glEnable(GL_DEPTH_TEST);
 
     // Create some primitive
     float vertices[] = {
@@ -86,16 +87,14 @@ int main() {
 
         out vec3 Color;
         out vec2 Texcoord;    
-            
-        uniform mat4 trans;
-    
+                
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 proj;
         void main(){
             Color = color;
             Texcoord = texcoord;
-            gl_Position = trans * vec4(position,0.0, 1.0);
+            gl_Position = proj * view *  model * vec4(position,0.0, 1.0);
         }
     )glsl";
     //Handles coloring of pixels using glsl
@@ -250,7 +249,7 @@ int main() {
 
    
         
-    GLint uniTrans = glGetUniformLocation(shaderProgram, "trans");    
+    GLint uniTrans = glGetUniformLocation(shaderProgram, "model");    
     
     //View Transformation, Camera matrix, Simulates a moving camera
     glm::mat4 view = glm::lookAt(
@@ -272,22 +271,23 @@ int main() {
     auto t_start = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(window)) {
         glClear(GL_COLOR_BUFFER_BIT);
+
         auto t_now = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
 
 		GLint timeUnform = glGetUniformLocation(shaderProgram, "time");
-        glm::mat4 trans = glm::mat4(1.0f);    
-        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
-        trans = glm::rotate(trans, time, glm::vec3(0.0f, 0.0f, 1.0f));
-        glm::vec4 result = trans * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        glm::mat4 model = glm::mat4(1.0f);
+        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+        model = glm::rotate(model, time, glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::vec4 result = model * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
         printf("%f, %f, %f\n", result.x, result.y, result.z);
 
-        trans = glm::rotate(
-            trans,
+        model = glm::rotate(
+            model,
             time * glm::radians(180.0f),
             glm::vec3(0.0f, 0.0f, 1.0f)
         );
-        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
+        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
 
         glUniform1f(timeUnform, (sin(time) + 1.0f) / 2.0f);
         glUseProgram(shaderProgram);
@@ -297,6 +297,8 @@ int main() {
 
         glfwSwapBuffers(window);
         glfwPollEvents();
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     }
 
     // Cleanup
