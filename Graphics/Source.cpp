@@ -1,6 +1,9 @@
 ﻿#define GLEW_STATIC
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <glm.hpp>
+#include <gtc/matrix_transform.hpp>
+#include <gtc/type_ptr.hpp>
 #include <iostream>
 #include <chrono>
 #include <SOIL.h>
@@ -72,17 +75,27 @@ int main() {
 
 
     //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
+    //Model matrix: position of model to real world
+	//View matrix: position of camera to real world
+	//Projection matrix: 3D to 2D Razterization
     const char* vertexSource = R"glsl(
         #version 330 core
         layout(location = 0) in vec2 position;
         layout(location = 1) in vec3 color;
         layout(location = 2) in vec2 texcoord;
+
         out vec3 Color;
         out vec2 Texcoord;    
+            
+        uniform mat4 trans;
+    
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 proj;
         void main(){
-            Texcoord = texcoord;
             Color = color;
-            gl_Position = vec4(position,0.0, 1.0);
+            Texcoord = texcoord;
+            gl_Position = trans * vec4(position,0.0, 1.0);
         }
     )glsl";
     //Handles coloring of pixels using glsl
@@ -95,6 +108,7 @@ int main() {
         uniform sampler2D texKitten;
         uniform sampler2D texPuppy;
         uniform float time;
+        
         void main() {
             vec4 colKitten = texture(texKitten, Texcoord);
             vec4 colPuppy = texture(texPuppy, Texcoord);
@@ -235,7 +249,25 @@ int main() {
 
 
    
+        
+    GLint uniTrans = glGetUniformLocation(shaderProgram, "trans");    
     
+    //View Transformation, Camera matrix, Simulates a moving camera
+    glm::mat4 view = glm::lookAt(
+        glm::vec3(1.2f, 1.2f, 1.2f),
+        glm::vec3(0.0f, 0.0f, 0.0f),
+        glm::vec3(0.0f, 0.0f, 1.0f)
+    );
+	GLint uniView = glGetUniformLocation(shaderProgram, "view");
+	glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+    glm::mat4 proj = glm::perspective(
+        glm::radians(45.0f),
+        800.0f / 600.0f,
+        1.0f,
+        10.0f
+	);
+	GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
+	glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
     // Main loop
     auto t_start = std::chrono::high_resolution_clock::now();
     while (!glfwWindowShouldClose(window)) {
@@ -244,9 +276,23 @@ int main() {
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
 
 		GLint timeUnform = glGetUniformLocation(shaderProgram, "time");
-		glUniform1f(timeUnform, (sin(time) + 1.0f) / 2.0f);
+        glm::mat4 trans = glm::mat4(1.0f);    
+        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
+        trans = glm::rotate(trans, time, glm::vec3(0.0f, 0.0f, 1.0f));
+        glm::vec4 result = trans * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+        printf("%f, %f, %f\n", result.x, result.y, result.z);
+
+        trans = glm::rotate(
+            trans,
+            time * glm::radians(180.0f),
+            glm::vec3(0.0f, 0.0f, 1.0f)
+        );
+        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(trans));
+
+        glUniform1f(timeUnform, (sin(time) + 1.0f) / 2.0f);
         glUseProgram(shaderProgram);
         glBindVertexArray(vao);
+        
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         glfwSwapBuffers(window);
