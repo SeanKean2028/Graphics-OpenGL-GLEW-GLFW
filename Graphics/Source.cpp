@@ -11,6 +11,8 @@
 
 using namespace std;
 int main() {
+    auto t_start = std::chrono::high_resolution_clock::now();
+
     // Initialize GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW\n";
@@ -39,15 +41,63 @@ int main() {
         std::cerr << "Failed to initialize GLEW\n";
         return -1;
     }
+	//Depth tests are good for removing objects behind other objects, Stencil tests are good for outlining objects/shapes to make mirrors, windows, and masking models
+	//Tests Depths to make sure not overlapping objects are drawn
     glEnable(GL_DEPTH_TEST);
-
+	//Stencil buffer makes a map of zeros and draws objects changing the values of the map to one determined on the drawn model
+    glEnable(GL_STENCIL_TEST);
     // Create some primitive
     float vertices[] = {
         // Position Color Texcoords
-        -0.5f, 0.5f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, // Top-left
-        0.5f, 0.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, // Top-right
-        0.5f, -0.5f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, // Bottom-right
-        -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f // Bottom-left
+    //    X    Y    Z      R     G     B     U      V
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+
+         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+
+        -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+        1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+        1.0f, 1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+        1.0f, 1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+        -1.0f, 1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+        -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
     };
          
     //Unsigned int elements referring to vertices bound to GL_ARRAY_BUFFER if we want to draw them in order
@@ -78,23 +128,25 @@ int main() {
     //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
     //Model matrix: position of model to real world
 	//View matrix: position of camera to real world
+	//Order matters in matrix multiplication! Projection looks at the view matrix which looks at the model matrix
 	//Projection matrix: 3D to 2D Razterization
     const char* vertexSource = R"glsl(
         #version 330 core
-        layout(location = 0) in vec2 position;
-        layout(location = 1) in vec3 color;
-        layout(location = 2) in vec2 texcoord;
-
+        in vec3 position;
+        in vec3 color;
+        in vec2 texcoord;
+        
         out vec3 Color;
         out vec2 Texcoord;    
-                
+
+        uniform vec3 overrideColor;
         uniform mat4 model;
         uniform mat4 view;
         uniform mat4 proj;
         void main(){
-            Color = color;
+            Color = overrideColor * color;
             Texcoord = texcoord;
-            gl_Position = proj * view *  model * vec4(position,0.0, 1.0);
+            gl_Position = proj * view *  model * vec4(position, 1.0);
         }
     )glsl";
     //Handles coloring of pixels using glsl
@@ -102,16 +154,20 @@ int main() {
     const char* fragmentSource = R"glsl(
         #version 330 core
         in vec3 Color;
-        in vec2 Texcoord;
+        uniform float time;
         out vec4 outColor;
+
         uniform sampler2D texKitten;
         uniform sampler2D texPuppy;
-        uniform float time;
+
+        in vec2 Texcoord;
         
+
+
         void main() {
             vec4 colKitten = texture(texKitten, Texcoord);
             vec4 colPuppy = texture(texPuppy, Texcoord);
-            outColor = mix(colKitten, colPuppy, time);
+            outColor = vec4(Color, 1.0) * mix(texture(texKitten, Texcoord),texture(texPuppy, Texcoord), 0.5);
         }
     )glsl";
     //Create Id to store the shader
@@ -172,7 +228,7 @@ int main() {
     //Set how the input is to be achieved, 2 = number of values, GL_FLOAT is the type of each component clamped to -1.0, and 1.0 
    //Last two most important, sets how the attribuates laid out, first = stride: how many bytes are between each position attribute, last = offset: how many bytes from the start of the array
    //Also stores the vbo currently bound in the GL_ARRAY_BUFFER
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(float), 0);
+    glVertexAttribPointer(posAttrib,3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
 
     //The method says what it does...
     glEnableVertexAttribArray(posAttrib);
@@ -191,12 +247,12 @@ int main() {
 
     //Defines an array of vertex attribute data 	
     // GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
     //Enables a generic vertex attribute array
     glEnableVertexAttribArray(colAttrib);
 
     GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
-    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void*)(5 * sizeof(float)));
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(texAttrib);
 
     std::cout << "posAttrib: " << posAttrib << "\n";
@@ -253,7 +309,7 @@ int main() {
     
     //View Transformation, Camera matrix, Simulates a moving camera
     glm::mat4 view = glm::lookAt(
-        glm::vec3(1.2f, 1.2f, 1.2f),
+        glm::vec3(2.5f, 2.5f, 2.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
@@ -266,22 +322,22 @@ int main() {
         10.0f
 	);
 	GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
+    GLint uniColor = glGetUniformLocation(shaderProgram, "overrideColor");
+
 	glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
     // Main loop
-    auto t_start = std::chrono::high_resolution_clock::now();
-    while (!glfwWindowShouldClose(window)) {
-        glClear(GL_COLOR_BUFFER_BIT);
+    while (!glfwWindowShouldClose(window)) {        
+   // Clear the screen to black
+        
+        glBindVertexArray(vao);
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+        // Calculate transformation
         auto t_now = std::chrono::high_resolution_clock::now();
         float time = std::chrono::duration_cast<std::chrono::duration<float>>(t_now - t_start).count();
 
-		GLint timeUnform = glGetUniformLocation(shaderProgram, "time");
         glm::mat4 model = glm::mat4(1.0f);
-        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
-        model = glm::rotate(model, time, glm::vec3(0.0f, 0.0f, 1.0f));
-        glm::vec4 result = model * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
-        printf("%f, %f, %f\n", result.x, result.y, result.z);
-
         model = glm::rotate(
             model,
             time * glm::radians(180.0f),
@@ -289,15 +345,39 @@ int main() {
         );
         glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
 
-        glUniform1f(timeUnform, (sin(time) + 1.0f) / 2.0f);
-        glUseProgram(shaderProgram);
-        glBindVertexArray(vao);
-        
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        // Draw cube
+        glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        glfwSwapBuffers(window);
+        glEnable(GL_STENCIL_TEST);
+
+            // Draw floor
+            glStencilFunc(GL_ALWAYS, 1, 0xFF);
+            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+            glStencilMask(0xFF);
+            glDepthMask(GL_FALSE);
+            glClear(GL_STENCIL_BUFFER_BIT);
+
+            glDrawArrays(GL_TRIANGLES, 36, 6);
+
+            // Draw cube reflection
+            glStencilFunc(GL_EQUAL, 1, 0xFF);
+            glStencilMask(0x00);
+            glDepthMask(GL_TRUE);
+
+            model = glm::scale(
+                glm::translate(model, glm::vec3(0, 0, -1)),
+                glm::vec3(1, 1, -1)
+            );
+            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+
+            glUniform3f(uniColor, 0.3f, 0.3f, 0.3f);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glUniform3f(uniColor, 1.0f, 1.0f, 1.0f);
+
+        glDisable(GL_STENCIL_TEST);
+
+        glfwSwapBuffers(window); 
         glfwPollEvents();
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     }
 
