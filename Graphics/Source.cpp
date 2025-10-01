@@ -8,8 +8,252 @@
 #include <chrono>
 #include <SOIL.h>
 #include <Windows.h>
-
 using namespace std;
+//Create Texture from an image file
+GLuint loadTexture(const GLchar* path)
+{
+    GLuint texture;
+    glGenTextures(1, &texture);
+
+    int width, height;
+    unsigned char* image;
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    image = SOIL_load_image(path, &width, &height, 0, SOIL_LOAD_RGB);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+    SOIL_free_image_data(image);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    return texture;
+}
+//Set pointers to vertex attributes in the shader to be changed and used in rendering the scene
+void specifySceneVertexAttributes(GLuint shaderProgram)
+{
+    GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
+    glEnableVertexAttribArray(posAttrib);
+    glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), 0);
+
+    GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
+    glEnableVertexAttribArray(colAttrib);
+    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
+
+    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+    glEnableVertexAttribArray(texAttrib);
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
+}
+// Set pointers to vertex attributes in the shader to be changed and used in rendering the screen
+void specifyScreenVertexAttributes(GLuint shaderProgram)
+{
+    GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
+    glEnableVertexAttribArray(posAttrib);
+    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+
+    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
+    glEnableVertexAttribArray(texAttrib);
+    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+}
+
+void createShaderProgram(const GLchar* vertSrc, const GLchar* fragSrc, GLuint& vertexShader, GLuint& fragmentShader, GLuint& shaderProgram)
+{
+    // Create and compile the vertex shader
+    vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertSrc, NULL);
+    glCompileShader(vertexShader);
+
+    // Create and compile the fragment shader
+    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragSrc, NULL);
+    glCompileShader(fragmentShader);
+
+    // Link the vertex and fragment shader into a shader program
+    shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glBindFragDataLocation(shaderProgram, 0, "outColor");
+    glLinkProgram(shaderProgram);
+}
+
+
+//Handles attributes as they appear in the vertex array, positions, and 3d Transformations
+//Model matrix: position of model to real world
+//View matrix: position of camera to real world
+//Order matters in matrix multiplication! Projection looks at the view matrix which looks at the model matrix
+//Projection matrix: 3D to 2D Razterization
+const GLchar* sceneVertexSource = R"glsl(
+        #version 330 core
+        in vec3 position;
+        in vec3 color;
+        in vec2 texcoord;
+        
+        out vec3 Color;
+        out vec2 Texcoord;    
+
+        uniform vec3 overrideColor;
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 proj;
+        void main(){
+            Color = overrideColor * color;
+            Texcoord = texcoord;
+            gl_Position = proj * view *  model * vec4(position, 1.0);
+        }
+    )glsl";
+//Handles coloring of pixels using glsl
+//sampler2D = texture, samples at certain points based on mix func. which linearly interpolates between two values based on a third value
+//Fragment shader commonly used in post processing effects  
+const GLchar* sceneFragmentSource = R"glsl(
+        #version 330 core
+        in vec3 Color;
+        uniform float time;
+        out vec4 outColor;
+        uniform int selector;
+
+        uniform sampler2D texKitten;
+        uniform sampler2D texPuppy;
+
+        in vec2 Texcoord;
+        
+
+
+        void main() {
+            vec4 colKitten = texture(texKitten, Texcoord);
+            vec4 colPuppy = texture(texPuppy, Texcoord);
+            outColor = vec4(Color, 1.0) * mix(texture(texKitten, Texcoord),texture(texPuppy, Texcoord), 0.5);
+        }
+    )glsl";
+const GLchar* screenFragmentSource = R"glsl(
+        #version 330 core
+        in vec2 Texcoord;
+        out vec4 outColor;
+        uniform sampler2D texFramebuffer;
+        uniform int selector;
+        
+        const float blurSizeH = 1.0 / 300.0;
+        const float blurSizeV = 1.0 / 200.0;
+
+        void main()
+        {
+            if (selector == 1) {
+                // Inverse Color
+                outColor = vec4(1.0) - texture(texFramebuffer, Texcoord);
+            } 
+            else if (selector == 2) {
+                // Greyscale
+                vec4 c = texture(texFramebuffer, Texcoord);
+                float avg = (c.r + c.g + c.b) / 3.0;
+                outColor = vec4(avg, avg, avg, 1.0);
+            } 
+            else if (selector == 3) {
+                // Simple blur
+                vec4 sum = vec4(0.0);
+                for (int y = -4; y <= 4; ++y) {
+                    for (int x = -4; x <= 4; ++x) {
+                        sum += texture(texFramebuffer,
+                                       Texcoord + vec2(float(x) * blurSizeH,
+                                                       float(y) * blurSizeV));
+                    }
+                }
+                outColor = sum / (9.0 * 9.0);
+            } 
+            else if (selector == 4) {
+                // Edge detection (Sobel-like)
+                vec4 top = texture(texFramebuffer, Texcoord + vec2(0.0,  blurSizeV));
+                vec4 bottom = texture(texFramebuffer, Texcoord + vec2(0.0, -blurSizeV));
+                vec4 left = texture(texFramebuffer, Texcoord + vec2(-blurSizeH, 0.0));
+                vec4 right = texture(texFramebuffer, Texcoord + vec2( blurSizeH, 0.0));
+                vec4 topLeft = texture(texFramebuffer, Texcoord + vec2(-blurSizeH,  blurSizeV));
+                vec4 topRight = texture(texFramebuffer, Texcoord + vec2( blurSizeH,  blurSizeV));
+                vec4 bottomLeft = texture(texFramebuffer, Texcoord + vec2(-blurSizeH, -blurSizeV));
+                vec4 bottomRight = texture(texFramebuffer, Texcoord + vec2( blurSizeH, -blurSizeV));
+                vec4 sx = -topLeft - 2.0 * left - bottomLeft + topRight + 2.0 * right + bottomRight;
+                vec4 sy = -topLeft - 2.0 * top - topRight + bottomLeft + 2.0 * bottom + bottomRight;
+                outColor = sqrt(sx * sx + sy * sy);
+            } 
+            else {
+                // Default: just pass through
+                outColor = texture(texFramebuffer, Texcoord);
+            }
+        }
+)glsl";
+const GLchar* screenVertexSource = R"glsl(
+        #version 330 core
+        in vec2 position;
+        in vec2 texcoord;
+        out vec2 Texcoord;
+        void main()
+        {
+            Texcoord = texcoord;
+            gl_Position = vec4(position, 0.0, 1.0);
+        }
+    )glsl";
+// Cube vertices
+GLfloat cubeVertices[] = {
+    -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+
+    -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+
+    -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+    -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+     0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+     0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+
+    -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+     0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+     0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+    -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+
+    -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+     0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+     0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+    -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+    -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+
+    -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+     1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+     1.0f,  1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+     1.0f,  1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
+    -1.0f,  1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
+    -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+};
+
+// Quad vertices
+GLfloat quadVertices[] = {
+    -1.0f,  1.0f,  0.0f, 1.0f,
+     1.0f,  1.0f,  1.0f, 1.0f,
+     1.0f, -1.0f,  1.0f, 0.0f,
+
+     1.0f, -1.0f,  1.0f, 0.0f,
+    -1.0f, -1.0f,  0.0f, 0.0f,
+    -1.0f,  1.0f,  0.0f, 1.0f
+};
+
+
 int main() {
     auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -41,297 +285,140 @@ int main() {
         std::cerr << "Failed to initialize GLEW\n";
         return -1;
     }
+
 	//Depth tests are good for removing objects behind other objects, Stencil tests are good for outlining objects/shapes to make mirrors, windows, and masking models
 	//Tests Depths to make sure not overlapping objects are drawn
     glEnable(GL_DEPTH_TEST);
 	//Stencil buffer makes a map of zeros and draws objects changing the values of the map to one determined on the drawn model
     glEnable(GL_STENCIL_TEST);
     // Create some primitive
-    float vertices[] = {
-        // Position Color Texcoords
-    //    X    Y    Z      R     G     B     U      V
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
 
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
 
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-         0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-         0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-
-        -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-        1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-        1.0f, 1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-        1.0f, 1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f,
-        -1.0f, 1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-        -1.0f, -1.0f, -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
-    };
          
     //Unsigned int elements referring to vertices bound to GL_ARRAY_BUFFER if we want to draw them in order
     GLuint elements[] = {
         0, 1, 2,
         2, 3, 0
 	};  
-    //We need a VAO
-    GLuint vao;
-    glGenVertexArrays(1, &vao);
-    glBindVertexArray(vao);
+// Create VAOsGLint success;
 
-    //Unsigned int to identify our primitive
-    GLuint vbo;
-    //Set id in buffer
-    glGenBuffers(1, &vbo);
-    //Upload actual data 
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    //Make it active GL_STATIC_DRAW = uploaded once drawn many times
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    GLuint vaoCube, vaoQuad;
+    glGenVertexArrays(1, &vaoCube);
+    glGenVertexArrays(1, &vaoQuad);
+// Create Vertix Buffer Objects (VBOs)
+    GLuint vboCube, vboQuad;
+    glGenBuffers(1, &vboCube);
+    glGenBuffers(1, &vboQuad);
+// Create shader programs
+    GLuint sceneVertexShader, sceneFragmentShader, sceneShaderProgram;
 
-    GLuint ebo;
-    glGenBuffers(1, &ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
+    GLuint screenVertexShader, screenFragmentShader, screenShaderProgram;
+    createShaderProgram(screenVertexSource, screenFragmentSource, screenVertexShader, screenFragmentShader, screenShaderProgram);
 
+    glBindBuffer(GL_ARRAY_BUFFER, vboCube);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
+    createShaderProgram(sceneVertexSource, sceneFragmentSource, sceneVertexShader, sceneFragmentShader, sceneShaderProgram);
+    glBindBuffer(GL_ARRAY_BUFFER, vboQuad);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+ 
+    // Specify the layout of the vertex data
+    glBindVertexArray(vaoCube);
+    glBindBuffer(GL_ARRAY_BUFFER, vboCube);
+    specifySceneVertexAttributes(sceneShaderProgram);
 
-    //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
-    //Model matrix: position of model to real world
-	//View matrix: position of camera to real world
-	//Order matters in matrix multiplication! Projection looks at the view matrix which looks at the model matrix
-	//Projection matrix: 3D to 2D Razterization
-    const char* vertexSource = R"glsl(
-        #version 330 core
-        in vec3 position;
-        in vec3 color;
-        in vec2 texcoord;
-        
-        out vec3 Color;
-        out vec2 Texcoord;    
-
-        uniform vec3 overrideColor;
-        uniform mat4 model;
-        uniform mat4 view;
-        uniform mat4 proj;
-        void main(){
-            Color = overrideColor * color;
-            Texcoord = texcoord;
-            gl_Position = proj * view *  model * vec4(position, 1.0);
-        }
-    )glsl";
-    //Handles coloring of pixels using glsl
-	//sampler2D = texture, samples at certain points based on mix func. which linearly interpolates between two values based on a third value
-    const char* fragmentSource = R"glsl(
-        #version 330 core
-        in vec3 Color;
-        uniform float time;
-        out vec4 outColor;
-
-        uniform sampler2D texKitten;
-        uniform sampler2D texPuppy;
-
-        in vec2 Texcoord;
-        
-
-
-        void main() {
-            vec4 colKitten = texture(texKitten, Texcoord);
-            vec4 colPuppy = texture(texPuppy, Texcoord);
-            outColor = vec4(Color, 1.0) * mix(texture(texKitten, Texcoord),texture(texPuppy, Texcoord), 0.5);
-        }
-    )glsl";
-    //Create Id to store the shader
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    //Upload actual data 
-    glShaderSource(vertexShader, 1, &vertexSource, NULL);
-    //Compile the shader into code
-    glCompileShader(vertexShader);
-
-    //Check if shader is working
-    GLint status;
-    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &status);
-    char buffer[1024];
-    glGetShaderInfoLog(vertexShader, 1024, NULL, buffer);
-    if (!status) {
-        std::cerr << "Vertex Shader Error:\n" << buffer << "\n";
-    }
-
-    //Create Id to store the shader
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    //Upload actual data 
-    glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
-    //Compile the shader into code
-    glCompileShader(fragmentShader);
-    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &status);
-    glGetShaderInfoLog(fragmentShader, 1024, NULL, buffer);
-    if (!status) {
-        std::cerr << "Fragment Shader Error:\n" << buffer << "\n";
-    }
-
-    //Creates a shaderProgram attaches both 
-    GLuint shaderProgram = glCreateProgram();
-
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    //sets to which location writing to  Use glDrawBuffers when rendering multiple buffers
-    glBindFragDataLocation(shaderProgram, 0, "outColor");
-
-    //Connections made project is linked!
-    glLinkProgram(shaderProgram);
-    // Check link status
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &status);
-    if (!status) {
-        glGetProgramInfoLog(shaderProgram, 1024, NULL, buffer);
-        std::cerr << "Shader Program Link Error:\n" << buffer << "\n";
-    }
-
-    glUseProgram(shaderProgram);
-    //We need to order our attributes
-    //Get attribute location signed int
-    GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
-    if (posAttrib == -1) {
-        // fallback if the attribute wasn't found (but shader uses layout(location = 0), so 0 is correct)
-        std::cerr << "Warning: 'position' attribute not found. Using location 0 as fallback.\n";
-        posAttrib = 0;
-    }
-
-    //Set how the input is to be achieved, 2 = number of values, GL_FLOAT is the type of each component clamped to -1.0, and 1.0 
-   //Last two most important, sets how the attribuates laid out, first = stride: how many bytes are between each position attribute, last = offset: how many bytes from the start of the array
-   //Also stores the vbo currently bound in the GL_ARRAY_BUFFER
-    glVertexAttribPointer(posAttrib,3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), 0);
-
-    //The method says what it does...
-    glEnableVertexAttribArray(posAttrib);
-    // Print some info
-    std::cout << "OpenGL Vendor:   " << glGetString(GL_VENDOR) << "\n";
-    std::cout << "OpenGL Renderer: " << glGetString(GL_RENDERER) << "\n";
-    std::cout << "OpenGL Version:  " << glGetString(GL_VERSION) << "\n";
-    std::cout << "GLSL Version:    " << glGetString(GL_SHADING_LANGUAGE_VERSION) << "\n";
-
-    // Optional: make background a non-black color so triangle is obvious
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-    //Get attribute location signed int
-    GLint colAttrib = glGetAttribLocation(shaderProgram, "color");
-
-
-    //Defines an array of vertex attribute data 	
-    // GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void* pointer
-    glVertexAttribPointer(colAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-    //Enables a generic vertex attribute array
-    glEnableVertexAttribArray(colAttrib);
-
-    GLint texAttrib = glGetAttribLocation(shaderProgram, "texcoord");
-    glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(texAttrib);
-
-    std::cout << "posAttrib: " << posAttrib << "\n";
-    std::cout << "colAttrib: " << colAttrib << "\n";
-    std::cout << "texAttrib: " << texAttrib << "\n";
-    //Texture
-	//Texture coorinates clamped between 0.0 and 1.0 where (0, 0) is bottom left and (1, 1) is top right
-    //Retrieving texture at the pixel = sampling
-    GLuint textures[2];
-    glGenTextures(2, textures);
-    int width, height;
-	unsigned char* image;
-	//Gotta activate before binding
-    glActiveTexture(GL_TEXTURE0);
-
-	//Atmost 48 textures can be bound at once
-    glBindTexture(GL_TEXTURE_2D, textures[0]);
-	//Cat loading in via SOIL
-    image = SOIL_load_image("textures/cat.png", &width, &height, 0, SOIL_LOAD_RGB);
-    if (!image) {
-        std::cerr << "Failed to load cat.png: " << SOIL_last_result() << "\n";
-    }
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB,
-        GL_UNSIGNED_BYTE, image);
-    glGenerateMipmap(GL_TEXTURE_2D);
-
-    SOIL_free_image_data(image);
-    glUniform1i(glGetUniformLocation(shaderProgram, "texKitten"), 0);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    //Dog loaded in via SOIL
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textures[1]);
-    image = SOIL_load_image("textures/puppy.png", &width, &height, 0, SOIL_LOAD_RGB);
-    if (!image) {
-        std::cerr << "Failed to load cat.png: " << SOIL_last_result() << "\n";
-    }
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    SOIL_free_image_data(image);
-    glUniform1i(glGetUniformLocation(shaderProgram, "texPuppy"), 1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
+    glBindVertexArray(vaoQuad);
+    glBindBuffer(GL_ARRAY_BUFFER, vboQuad);
+    specifyScreenVertexAttributes(screenShaderProgram);
 
    
-        
-    GLint uniTrans = glGetUniformLocation(shaderProgram, "model");    
-    
-    //View Transformation, Camera matrix, Simulates a moving camera
+    GLuint texKitten = loadTexture("textures/cat.png");
+    GLuint texPuppy = loadTexture("textures/puppy.png");
+
+    glUseProgram(sceneShaderProgram);
+    glUniform1i(glGetUniformLocation(sceneShaderProgram, "texKitten"), 0);
+    glUniform1i(glGetUniformLocation(sceneShaderProgram, "texPuppy"), 1);
+
+    glUseProgram(screenShaderProgram);
+    glUniform1i(glGetUniformLocation(screenShaderProgram, "texFramebuffer"), 0);
+
+    GLint posAttrib = glGetAttribLocation(screenFragmentShader, "position");
+    if (posAttrib != -1) {
+        glEnableVertexAttribArray(posAttrib);
+        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
+    }
+
+    GLint uniModel = glGetUniformLocation(sceneShaderProgram, "model");
+
+    // Create framebuffer
+    GLuint frameBuffer;
+    glGenFramebuffers(1, &frameBuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+
+    // Create texture to hold color buffer
+    GLuint texColorBuffer;
+    glGenTextures(1, &texColorBuffer);
+    glBindTexture(GL_TEXTURE_2D, texColorBuffer);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 800, 600, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texColorBuffer, 0);
+
+    // Create Renderbuffer Object to hold depth and stencil buffers
+    GLuint rboDepthStencil;
+    glGenRenderbuffers(1, &rboDepthStencil);
+    glBindRenderbuffer(GL_RENDERBUFFER, rboDepthStencil);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, 800, 600);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rboDepthStencil);
+
+    // Set up projection
     glm::mat4 view = glm::lookAt(
         glm::vec3(2.5f, 2.5f, 2.0f),
         glm::vec3(0.0f, 0.0f, 0.0f),
         glm::vec3(0.0f, 0.0f, 1.0f)
     );
-	GLint uniView = glGetUniformLocation(shaderProgram, "view");
-	glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
-    glm::mat4 proj = glm::perspective(
-        glm::radians(45.0f),
-        800.0f / 600.0f,
-        1.0f,
-        10.0f
-	);
-	GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
-    GLint uniColor = glGetUniformLocation(shaderProgram, "overrideColor");
 
-	glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
-    // Main loop
+    glUseProgram(sceneShaderProgram);
+
+    GLint uniView = glGetUniformLocation(sceneShaderProgram, "view");
+    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
+
+    glm::mat4 proj = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 1.0f, 10.0f);
+    GLint uniProj = glGetUniformLocation(sceneShaderProgram, "proj");
+    glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
+
+    GLint uniColor = glGetUniformLocation(sceneShaderProgram, "overrideColor");
+
+    glUseProgram(screenShaderProgram);
+    GLint selection = glGetUniformLocation(screenShaderProgram, "selector");
+    int curSelector = 0;
+	glUniform1i(selection, curSelector);
+    GLenum e = glGetError();
+    if (e != GL_NO_ERROR) std::cerr << "GL error after uniform1i: " << e << std::endl;
+
     while (!glfwWindowShouldClose(window)) {        
-   // Clear the screen to black
-        
-        glBindVertexArray(vao);
+        glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
+        glEnable(GL_DEPTH_TEST);
+       
+        glBindVertexArray(vaoCube);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(sceneShaderProgram);
+        if (glfwGetKey(window, GLFW_KEY_1) == GLFW_PRESS) curSelector = 1;
+        if (glfwGetKey(window, GLFW_KEY_2) == GLFW_PRESS) curSelector = 2;
+        if (glfwGetKey(window, GLFW_KEY_3) == GLFW_PRESS) curSelector = 3;
+        if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) curSelector = 4;
+        if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS) curSelector = 0;
+
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texKitten);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, texPuppy);
+
+        // Clear the screen to white
 
         // Calculate transformation
         auto t_now = std::chrono::high_resolution_clock::now();
@@ -343,85 +430,120 @@ int main() {
             time * glm::radians(180.0f),
             glm::vec3(0.0f, 0.0f, 1.0f)
         );
-        glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
 
         // Draw cube
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
         glEnable(GL_STENCIL_TEST);
 
-            // Draw floor
-            glStencilFunc(GL_ALWAYS, 1, 0xFF);
-            glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-            glStencilMask(0xFF);
-            glDepthMask(GL_FALSE);
-            glClear(GL_STENCIL_BUFFER_BIT);
+        // Draw floor
+        glStencilFunc(GL_ALWAYS, 1, 0xFF);
+        glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+        glStencilMask(0xFF);
+        glDepthMask(GL_FALSE);
+        glClear(GL_STENCIL_BUFFER_BIT);
 
-            glDrawArrays(GL_TRIANGLES, 36, 6);
+        glDrawArrays(GL_TRIANGLES, 36, 6);
 
-            // Draw cube reflection
-            glStencilFunc(GL_EQUAL, 1, 0xFF);
-            glStencilMask(0x00);
-            glDepthMask(GL_TRUE);
+        // Draw cube reflection
+        glStencilFunc(GL_EQUAL, 1, 0xFF);
+        glStencilMask(0x00);
+        glDepthMask(GL_TRUE);
 
-            model = glm::scale(
-                glm::translate(model, glm::vec3(0, 0, -1)),
-                glm::vec3(1, 1, -1)
-            );
-            glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(model));
+        model = glm::scale(glm::translate(model, glm::vec3(0, 0, -1)), glm::vec3(1, 1, -1));
+        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
 
-            glUniform3f(uniColor, 0.3f, 0.3f, 0.3f);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-            glUniform3f(uniColor, 1.0f, 1.0f, 1.0f);
+        glUniform3f(uniColor, 0.3f, 0.3f, 0.3f);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glUniform3f(uniColor, 1.0f, 1.0f, 1.0f);
 
         glDisable(GL_STENCIL_TEST);
 
-        glfwSwapBuffers(window); 
-        glfwPollEvents();
+        // Bind default framebuffer and draw contents of our framebuffer
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(vaoQuad);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(screenShaderProgram);
 
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texColorBuffer);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glUseProgram(screenShaderProgram);
+        glUniform1i(selection, curSelector);GLint ok;
+        glGetProgramiv(screenFragmentShader, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char buf[1024]; glGetProgramInfoLog(screenFragmentShader, 1024, NULL, buf);
+            std::cerr << "LINK ERROR: " << buf << std::endl;
+        }
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
     // Cleanup
-    glDeleteProgram(shaderProgram);
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-    glDeleteBuffers(1, &vbo);
-    glDeleteVertexArrays(1, &vao);
+    glDeleteRenderbuffers(1, &rboDepthStencil);
+    glDeleteTextures(1, &texColorBuffer);
+    glDeleteFramebuffers(1, &frameBuffer);
+
+    glDeleteTextures(1, &texKitten);
+    glDeleteTextures(1, &texPuppy);
+
+    glDeleteProgram(screenShaderProgram);
+    glDeleteShader(screenFragmentShader);
+    glDeleteShader(screenVertexShader);
+
+    glDeleteProgram(sceneShaderProgram);
+    glDeleteShader(sceneFragmentShader);
+    glDeleteShader(sceneVertexShader);
+
+    glDeleteBuffers(1, &vboCube);
+    glDeleteBuffers(1, &vboQuad);
+
+    glDeleteVertexArrays(1, &vaoCube);
+    glDeleteVertexArrays(1, &vaoQuad);
 
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
 }
 /*
-* 1. Initialize GLFW, GLEW, MAKE WINDOWS
-        glfwInit()
-        glfwWindowHint(...)
-        glfwCreateWindow(...)
-        glfwMakeContextCurrent(window)
-        glewInit()
-  2. Setup arrays (Vertex Buffer Object, Vertex Array Object, Element Buffer Object)
-        glGenVertexArrays, glBindVertexArray
-        glGenBuffers, glBindBuffer, glBufferData
-        Compile + link shaders → glUseProgram
-        Setup vertex attributes → glVertexAttribPointer, glEnableVertexAttribArray
-  3. Setup texture information
-        glGenTextures, glBindTexture
-        glTexParameteri
-        SOIL_load_image
-        glTexImage2D
-        glGenerateMipmap
-        SOIL_free_image_data
-        glUniform1i (set sampler to texture unit 0)
-  4. Main loop: 
-        a. glClear
-        b. glActiveTexture(GL_TEXTURE0)
-        c. glBindTexture(GL_TEXTURE_2D, tex)
-        d. glUseProgram 
-        e. glBindVertexArray  
-        f. glDrawElements
-        g. glfwSwapBuffers, glfwPollEvents
-  5. Disposing
-        Cleanup: delete VAO/VBO/EBO/texture/shaders
-        glfwDestroyWindow
-        glfwTerminate()
+* 
+1) Headers
+    Include headers for OpenGL, GLFW, GLEW, GLM, SOIL, and Windows.
+2) Initialization
+    Start a timer with std::chrono
+    Initialize GLFW and request an OpenGL 3.3 core profile context
+        Create a window and make its OpenGL context current
+    Initialize GLEW for OpenGL extension management
+    
+    Enable depth testing (GL_DEPTH_TEST) and stencil testing (GL_STENCIL_TEST
+3) Vertex Data
+   Define vertex data for a cube and a floor (position, color, texture coordinates
+   Generate a VAO (vertex array object) and bind it.
+   Generate a VBO (vertex buffer object), bind it, and upload vertex data.
+   Generate an EBO (element buffer object), bind it, and upload element indices (not used in drawing).
+4) Shaders
+    Write and compile a vertex shader (handles positions, colors, and matrices).
+    Write and compile a fragment shader (mixes two textures and outputs color).
+    
+    Link shaders into a shader program and check for errors.
+    Get attribute locations (position, color, texcoord) and configure them with glVertexAttribPointer.
+    Enable vertex attributes in the VAO.
+5) Textures
+    Load two textures (cat.png, puppy.png) with SOIL, bind them to texture units 0 and 1, and set parameters.
+6) Transformations
+    Get uniform locations (model, view, proj, overrideColor) and upload view/projection matrices.
+7) Main loop: drawing, clearing, updating
+    Enter the main render loop:
+        Clear color, depth, and stencil buffers.
+        Update the model matrix to rotate the cube over time.
+        Draw the cube (glDrawArrays with 36 vertices).
+        Configure stencil buffer, draw the floor, then draw the cube’s reflection with inverted Z and darker color.
+
+        Swap buffers and poll for input events.
+8) Clean Up
+    delete shaders, program, buffers, VAO, and destroy the window.
+    Terminate GLFW and exit.
 */
