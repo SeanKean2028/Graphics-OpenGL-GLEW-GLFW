@@ -87,7 +87,7 @@ glm::vec3 direction;
 bool firstMouse = true;
 float lastX = 0;
 float lastY = 0;
-float yaw = -90.0f;
+float yaw = 180;
 float pitch = 0;
 void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
     if (firstMouse)
