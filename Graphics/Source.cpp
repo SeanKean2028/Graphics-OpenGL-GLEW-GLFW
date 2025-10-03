@@ -76,7 +76,69 @@ void createShaderProgram(const GLchar* vertSrc, const GLchar* fragSrc, GLuint& v
     glBindFragDataLocation(shaderProgram, 0, "outColor");
     glLinkProgram(shaderProgram);
 }
+float deltaTime = 0.0f;	// Time between current frame and last frame
+float lastFrame = 0.0f; // Time of last frame
 
+glm::vec3 cameraPos = glm::vec3(1.0f, 1.0f, 3.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+
+glm::vec3 direction;
+bool firstMouse = true;
+float lastX = 0;
+float lastY = 0;
+float yaw = -90.0f;
+float pitch = 0;
+void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
+    if (firstMouse)
+    {
+        cameraFront = glm::normalize(glm::vec3(0.0f, 0.0f, 0.0f) - cameraPos);
+        lastX = xpos;
+        lastY = ypos;
+        yaw = glm::degrees(atan2(cameraFront.z, cameraFront.x)) - 90.0f;
+        pitch = glm::degrees(asin(cameraFront.y));
+		direction = cameraFront;
+        firstMouse = false;
+        return;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos;
+    lastX = xpos;
+    lastY = ypos;
+
+    float sensitivity = 0.1f;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    yaw += xoffset;
+    pitch += yoffset;
+
+    if (pitch > 89.0f)
+        pitch = 89.0f;
+    if (pitch < -89.0f)
+        pitch = -89.0f;
+;
+    direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    direction.y = sin(glm::radians(pitch));
+    direction.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(direction);
+
+
+}
+void processInput(GLFWwindow* window)
+{
+
+    float cameraSpeed = 2.5f * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos -= cameraSpeed * cameraFront;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos -= glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos += glm::normalize(glm::cross(cameraFront, cameraUp)) * cameraSpeed;
+}
 
 //Handles attributes as they appear in the vertex array, positions, and 3d Transformations
 //Model matrix: position of model to real world
@@ -253,7 +315,6 @@ GLfloat quadVertices[] = {
     -1.0f,  1.0f,  0.0f, 1.0f
 };
 
-
 int main() {
     auto t_start = std::chrono::high_resolution_clock::now();
 
@@ -374,16 +435,17 @@ int main() {
     glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rboDepthStencil);
 
     // Set up projection
-    glm::mat4 view = glm::lookAt(
-        glm::vec3(2.5f, 2.5f, 2.0f),
-        glm::vec3(0.0f, 0.0f, 0.0f),
-        glm::vec3(0.0f, 0.0f, 1.0f)
-    );
-
+	glm::vec3 cameraTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+	//Gram-Schmidt process to find the right and up vectors of the camera
+	//By creating a 3x3 matrix with the forward, right, and up vectors as columns, we can dfine a 4th axes to add translation and scaling
+	glm::vec3 cameraDirection = glm::normalize(cameraPos - cameraTarget);
+	glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+	glm::vec3 cameraRight = glm::normalize(glm::cross(up, cameraDirection));
+	glm::vec3 cameraUp = glm::cross(cameraDirection, cameraRight);
+   
+    
     glUseProgram(sceneShaderProgram);
 
-    GLint uniView = glGetUniformLocation(sceneShaderProgram, "view");
-    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
     glm::mat4 proj = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 1.0f, 10.0f);
     GLint uniProj = glGetUniformLocation(sceneShaderProgram, "proj");
@@ -397,11 +459,22 @@ int main() {
 	glUniform1i(selection, curSelector);
     GLenum e = glGetError();
     if (e != GL_NO_ERROR) std::cerr << "GL error after uniform1i: " << e << std::endl;
+    
+    GLint uniView = glGetUniformLocation(sceneShaderProgram, "view");
+        cameraFront = glm::normalize(glm::vec3(0.0f, 0.0f, 0.0f) - cameraPos);
+        yaw = glm::degrees(atan2(cameraFront.z, cameraFront.x)) - 90.0f;
+        pitch = glm::degrees(asin(cameraFront.y));
+        glfwSetCursorPosCallback(window, mouse_callback);
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     while (!glfwWindowShouldClose(window)) {        
         glBindFramebuffer(GL_FRAMEBUFFER, frameBuffer);
         glEnable(GL_DEPTH_TEST);
-       
+
+        float currentFrame = glfwGetTime();
+        deltaTime = currentFrame - lastFrame;
+        lastFrame = currentFrame;
+
         glBindVertexArray(vaoCube);
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -412,7 +485,13 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) curSelector = 4;
         if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS) curSelector = 0;
 
-
+		processInput(window);
+        glm::mat4 view;
+	    float radius = 10.0f;
+        float camX = sin(glfwGetTime() * radius);
+	    float camZ = cos(glfwGetTime() * radius);
+        view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+	    glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texKitten);
         glActiveTexture(GL_TEXTURE1);
