@@ -45,6 +45,7 @@ void specifySceneVertexAttributes(GLuint shaderProgram)
     glEnableVertexAttribArray(texAttrib);
     glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)(6 * sizeof(GLfloat)));
 }
+
 // Set pointers to vertex attributes in the shader to be changed and used in rendering the screen
 void specifyScreenVertexAttributes(GLuint shaderProgram)
 {
@@ -57,7 +58,7 @@ void specifyScreenVertexAttributes(GLuint shaderProgram)
     glVertexAttribPointer(texAttrib, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
 }
 
-void createShaderProgram(const GLchar* vertSrc, const GLchar* fragSrc, GLuint& vertexShader, GLuint& fragmentShader, GLuint& shaderProgram)
+void createShaderProgram(const GLchar* vertSrc, const GLchar* fragSrc, GLuint& vertexShader, GLuint& fragmentShader,GLuint& shaderProgram)
 {
     // Create and compile the vertex shader
     vertexShader = glCreateShader(GL_VERTEX_SHADER);
@@ -73,6 +74,17 @@ void createShaderProgram(const GLchar* vertSrc, const GLchar* fragSrc, GLuint& v
     shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
+    glBindFragDataLocation(shaderProgram, 0, "outColor");
+    glLinkProgram(shaderProgram);
+}
+
+void createShaderProgram( GLuint& gridVertex, GLuint& gridFrag, GLuint& shaderProgram)
+{
+    // Link the vertex and fragment shader into a shader program
+    shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, gridVertex);
+    glAttachShader(shaderProgram, gridFrag);
+	glLinkProgram(shaderProgram);
     glBindFragDataLocation(shaderProgram, 0, "outColor");
     glLinkProgram(shaderProgram);
 }
@@ -126,6 +138,7 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos) {
 
 
 }
+
 void processInput(GLFWwindow* window)
 {
 
@@ -185,6 +198,44 @@ const GLchar* sceneFragmentSource = R"glsl(
             vec4 colKitten = texture(texKitten, Texcoord);
             vec4 colPuppy = texture(texPuppy, Texcoord);
             outColor = vec4(Color, 1.0) * mix(texture(texKitten, Texcoord),texture(texPuppy, Texcoord), 0.5);
+        }
+    )glsl";
+const GLchar* sceneGridLinesFragmentSource = R"glsl(
+        #version 330 core
+        in vec3 FragPos;
+        out vec4 FragColor;
+
+        void main()
+        {
+            float lineWidth = 0.02; // thickness
+            float gridSpacing = 1.0;
+
+            // repeat space
+            float x = abs(mod(FragPos.x, gridSpacing));
+            float z = abs(mod(FragPos.z, gridSpacing));
+
+            // near the grid line → dark
+            if (x < lineWidth || z < lineWidth)
+                FragColor = vec4(0.3, 0.3, 0.3, 1.0);
+            else
+                discard; // or background color
+        }
+    )glsl";
+const GLchar* sceneGridLinesVertexSource = R"glsl(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+
+        uniform mat4 model;
+        uniform mat4 view;
+        uniform mat4 projection;
+
+        out vec3 FragPos;
+
+        void main()
+        {
+            vec4 worldPos = model * vec4(aPos, 1.0);
+            FragPos = worldPos.xyz;
+            gl_Position = projection * view * worldPos;
         }
     )glsl";
 const GLchar* screenFragmentSource = R"glsl(
@@ -314,6 +365,15 @@ GLfloat quadVertices[] = {
     -1.0f, -1.0f,  0.0f, 0.0f,
     -1.0f,  1.0f,  0.0f, 1.0f
 };
+float groundVertices[] = {
+    -5000.0f, 0.0f, -5000.0f,
+     5000.0f, 0.0f, -5000.0f,
+     5000.0f, 0.0f,  5000.0f,
+
+    -5000.0f, 0.0f, -5000.0f,
+     5000.0f, 0.0f,  5000.0f,
+    -5000.0f, 0.0f,  5000.0f
+};
 
 int main() {
     auto t_start = std::chrono::high_resolution_clock::now();
@@ -371,18 +431,29 @@ int main() {
     glGenBuffers(1, &vboCube);
     glGenBuffers(1, &vboQuad);
 // Create shader programs
-    GLuint sceneVertexShader, sceneFragmentShader, sceneShaderProgram;
+    GLuint sceneVertexShader, sceneFragmentShader, sceneShaderProgram, gridShaderProgram, gridVertexShader, gridFragmentShader;
 
     GLuint screenVertexShader, screenFragmentShader, screenShaderProgram;
     createShaderProgram(screenVertexSource, screenFragmentSource, screenVertexShader, screenFragmentShader, screenShaderProgram);
+    createShaderProgram(sceneVertexSource, sceneFragmentSource, sceneVertexShader, sceneFragmentShader, sceneShaderProgram);
 
     glBindBuffer(GL_ARRAY_BUFFER, vboCube);
     glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
-    createShaderProgram(sceneVertexSource, sceneFragmentSource, sceneVertexShader, sceneFragmentShader, sceneShaderProgram);
+// Create grid shaders
+    gridVertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(gridVertexShader, 1, &sceneGridLinesVertexSource, NULL);
+    glCompileShader(gridVertexShader);
+
+    gridFragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(gridFragmentShader, 1, &sceneGridLinesFragmentSource, NULL);
+    glCompileShader(gridFragmentShader);
+    
+    createShaderProgram(gridVertexShader, gridFragmentShader, gridShaderProgram);
+    
     glBindBuffer(GL_ARRAY_BUFFER, vboQuad);
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
  
-    // Specify the layout of the vertex data
+// Specify the layout of the vertex data
     glBindVertexArray(vaoCube);
     glBindBuffer(GL_ARRAY_BUFFER, vboCube);
     specifySceneVertexAttributes(sceneShaderProgram);
@@ -390,6 +461,21 @@ int main() {
     glBindVertexArray(vaoQuad);
     glBindBuffer(GL_ARRAY_BUFFER, vboQuad);
     specifyScreenVertexAttributes(screenShaderProgram);
+
+// Create grid VAO and VBO
+    unsigned int gridVAO, gridVBO;
+    glGenVertexArrays(1, &gridVAO);
+    glGenBuffers(1, &gridVBO);
+
+    glBindVertexArray(gridVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, gridVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(groundVertices), groundVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0); // unbind
 
    
     GLuint texKitten = loadTexture("textures/cat.png");
@@ -402,7 +488,7 @@ int main() {
     glUseProgram(screenShaderProgram);
     glUniform1i(glGetUniformLocation(screenShaderProgram, "texFramebuffer"), 0);
 
-    GLint posAttrib = glGetAttribLocation(screenFragmentShader, "position");
+    GLint posAttrib = glGetAttribLocation(screenShaderProgram, "position");
     if (posAttrib != -1) {
         glEnableVertexAttribArray(posAttrib);
         glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (void*)0);
@@ -485,7 +571,18 @@ int main() {
         if (glfwGetKey(window, GLFW_KEY_4) == GLFW_PRESS) curSelector = 4;
         if (glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS) curSelector = 0;
 
-		processInput(window);
+        up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+        glm::vec3 front;
+        front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+        front.y = sin(glm::radians(pitch));
+        front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+        cameraFront = glm::normalize(front);
+
+        cameraRight = glm::normalize(glm::cross(cameraFront, up));
+        cameraUp = glm::normalize(glm::cross(cameraRight, cameraFront));
+        processInput(window);
+
         glm::mat4 view;
 	    float radius = 10.0f;
         float camX = sin(glfwGetTime() * radius);
@@ -530,6 +627,7 @@ int main() {
         glStencilMask(0x00);
         glDepthMask(GL_TRUE);
 
+
         model = glm::scale(glm::translate(model, glm::vec3(0, 0, -1)), glm::vec3(1, 1, -1));
         glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
 
@@ -537,7 +635,26 @@ int main() {
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glUniform3f(uniColor, 1.0f, 1.0f, 1.0f);
 
-        glDisable(GL_STENCIL_TEST);
+    //Draw Grid
+            glUseProgram(gridShaderProgram);
+
+            // set uniforms
+
+            glUniformMatrix4fv(glGetUniformLocation(gridShaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(view));
+            glUniformMatrix4fv(glGetUniformLocation(gridShaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
+
+        
+            glm::mat4 gridModel = glm::mat4(6.0f);
+            glUniformMatrix4fv(glGetUniformLocation(gridShaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(gridModel));
+
+
+            // draw grid quad
+            glDisable(GL_STENCIL_TEST);
+            glBindVertexArray(gridVAO);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0);
+
+
 
         // Bind default framebuffer and draw contents of our framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -548,9 +665,9 @@ int main() {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texColorBuffer);
 
-        glDrawArrays(GL_TRIANGLES, 0, 6);
         glUseProgram(screenShaderProgram);
         glUniform1i(selection, curSelector);GLint ok;
+        glDrawArrays(GL_TRIANGLES, 0, 6);
         glGetProgramiv(screenFragmentShader, GL_LINK_STATUS, &ok);
         if (!ok) {
             char buf[1024]; glGetProgramInfoLog(screenFragmentShader, 1024, NULL, buf);
@@ -576,6 +693,8 @@ int main() {
     glDeleteProgram(sceneShaderProgram);
     glDeleteShader(sceneFragmentShader);
     glDeleteShader(sceneVertexShader);
+    glDeleteShader(gridVertexShader);
+    glDeleteShader(gridFragmentShader);
 
     glDeleteBuffers(1, &vboCube);
     glDeleteBuffers(1, &vboQuad);
@@ -600,13 +719,14 @@ int main() {
     Enable depth testing (GL_DEPTH_TEST) and stencil testing (GL_STENCIL_TEST
 3) Vertex Data
    Define vertex data for a cube and a floor (position, color, texture coordinates
-   Generate a VAO (vertex array object) and bind it.
-   Generate a VBO (vertex buffer object), bind it, and upload vertex data.
-   Generate an EBO (element buffer object), bind it, and upload element indices (not used in drawing).
+   Generate VAOs (vertex array object) and bind it.
+   Generate VBOs (vertex buffer object), bind it, and upload vertex data.
+ (element buffer object), bind it, and upload element indices (not used in drawing).
 4) Shaders
-    Write and compile a vertex shader (handles positions, colors, and matrices).
-    Write and compile a fragment shader (mixes two textures and outputs color).
-    
+    Write and compile our vertex shaders (handles positions, colors, and matrices).
+		For scene vs. screen, and from various objects (grid lines) to our cubes shaders
+    Write and compile our fragment shaders (mixes two textures and outputs color).
+        same as above
     Link shaders into a shader program and check for errors.
     Get attribute locations (position, color, texcoord) and configure them with glVertexAttribPointer.
     Enable vertex attributes in the VAO.
@@ -619,8 +739,9 @@ int main() {
         Clear color, depth, and stencil buffers.
         Update the model matrix to rotate the cube over time.
         Draw the cube (glDrawArrays with 36 vertices).
+        Draw Reflection Quad
+        Draw grid lines
         Configure stencil buffer, draw the floor, then draw the cube’s reflection with inverted Z and darker color.
-
         Swap buffers and poll for input events.
 8) Clean Up
     delete shaders, program, buffers, VAO, and destroy the window.
